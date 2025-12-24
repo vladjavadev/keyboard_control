@@ -210,7 +210,7 @@ if __name__ == "__main__":
         print("\n\nTest interrupted by user")
         driver.stop()
     except Exception as e:
-        print(f"\n\nError during test: {e}")
+        print("\n\nError during test: ", e)
         driver.stop()
     finally:
         print("Cleaning up resources")

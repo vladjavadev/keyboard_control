@@ -7,7 +7,7 @@ Controls a differential drive robot via MotorDriver class
 import sys
 import tty
 import termios
-from motor_driver import MotorDriver
+from robot.motor_driver import MotorDriver
 
 # Control parameters
 SPEED_NORMAL = 60      # Normal forward/backward speed (%)
