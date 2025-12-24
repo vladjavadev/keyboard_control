@@ -115,7 +115,7 @@ class KeyboardControl:
         # Wait for initial keypress
         self.get_key()
         
-        print("\n🤖 Robot control active! Use arrow keys to drive.\n")
+        print("\nRobot control active! Use arrow keys to drive.\n")
         
         try:
             while self.running:
