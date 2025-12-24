@@ -65,37 +65,37 @@ class KeyboardControl:
         
         if key == 'UP' or key == 'w' or key == 'W':
             # Forward
-            print("Forward   ", end='\r')
+            print("Forward   ", "\r")
             self.driver.set_wheel_duty(SPEED_NORMAL, SPEED_NORMAL)
             
         elif key == 'DOWN' or key == 's' or key == 'S':
             # Backward
-            print("Backward  ", end='\r')
+            print("Backward  ", "\r")
             self.driver.set_wheel_duty(-SPEED_NORMAL, -SPEED_NORMAL)
             
         elif key == 'LEFT':
             # Turn left (left wheel slower)
-            print("Turn Left ", end='\r')
+            print("Turn Left ", "\r")
             self.driver.set_wheel_duty(SPEED_TURN * 0.3, SPEED_TURN)
             
         elif key == 'RIGHT':
             # Turn right (right wheel slower)
-            print("Turn Right", end='\r')
+            print("Turn Right", "\r")
             self.driver.set_wheel_duty(SPEED_TURN, SPEED_TURN * 0.3)
             
         elif key == 'a' or key == 'A':
             # Rotate left in place
-            print("Rotate Left ", end='\r')
+            print("Rotate Left ", "\r")
             self.driver.set_wheel_duty(-SPEED_ROTATE, SPEED_ROTATE)
             
         elif key == 'd' or key == 'D':
             # Rotate right in place
-            print("Rotate Right", end='\r')
+            print("Rotate Right", "\r")
             self.driver.set_wheel_duty(SPEED_ROTATE, -SPEED_ROTATE)
             
         elif key == ' ':
             # Stop
-            print("Stop      ", end='\r')
+            print("Stop      ", "\r")
             self.driver.stop()
             
         elif key == 'q' or key == 'Q' or key == '\x1b':
