@@ -11,7 +11,7 @@ import threading
 import time
 
 # BeagleBone Green/Green Wireless pin to GPIO mapping
-# These boards use a single gpiochip with direct GPIO line numbers
+# GPIO number formula: (gpiochip * 32) + line_offset
 PIN_MAP = {
     # P8 Header
     "P8_3": 38,   "P8_4": 39,   "P8_5": 34,   "P8_6": 35,
@@ -27,7 +27,7 @@ PIN_MAP = {
     "P8_43": 72,  "P8_44": 73,  "P8_45": 70,  "P8_46": 71,
     
     # P9 Header
-    "P9_11": 30,  "P9_12": 60,  "P9_13": 31,  "P9_14": 50,
+    "P9_11": 126, "P9_12": 60,  "P9_13": 31,  "P9_14": 50,
     "P9_15": 48,  "P9_16": 51,  "P9_17": 5,   "P9_18": 4,
     "P9_19": 13,  "P9_20": 12,  "P9_21": 3,   "P9_22": 2,
     "P9_23": 49,  "P9_24": 15,  "P9_25": 117, "P9_26": 14,
@@ -50,11 +50,15 @@ class GPIO:
     
     # Internal state
     _line_requests = {}
-    _pin_info = {}  # Store (chip_path, line_offset) for each pin
+    _pin_info = {}
     
     @classmethod
     def _pin_to_gpio(cls, pin):
-        """Convert BeagleBone pin name to (chip_path, line_offset) tuple"""
+        """Convert BeagleBone pin name to (chip_path, line_offset) tuple
+        
+        BeagleBone GPIO numbering: GPIO_number = (chip * 32) + line_offset
+        Example: GPIO 126 = gpiochip3 * 32 + line 30 = 96 + 30
+        """
         if isinstance(pin, tuple):
             return pin
         if pin not in PIN_MAP:
@@ -62,8 +66,7 @@ class GPIO:
         
         gpio_num = PIN_MAP[pin]
         
-        # Convert GPIO number to chip and line offset
-        # BeagleBone has 4 chips with 32 lines each
+        # Calculate chip and line from global GPIO number
         chip_num = gpio_num // 32
         line_offset = gpio_num % 32
         chip_path = f"/dev/gpiochip{chip_num}"
@@ -75,7 +78,7 @@ class GPIO:
         """Setup a GPIO pin
         
         Args:
-            pin: Pin name (e.g., "P9_21") or GPIO number
+            pin: Pin name (e.g., "P9_11") or GPIO number
             direction: GPIO.OUT or GPIO.IN
             pull_up_down: Pull up/down resistor
             initial: Initial value for output pins
@@ -90,9 +93,8 @@ class GPIO:
         # Store chip and offset for this pin
         cls._pin_info[pin] = (chip_path, line_offset)
         
-        # Configure line settings for libgpiod v2.x
+        # Configure line settings
         if direction == cls.OUT:
-            # Output mode
             line_settings = {
                 line_offset: gpiod.LineSettings(
                     direction=Direction.OUTPUT,
@@ -100,7 +102,6 @@ class GPIO:
                 )
             }
         else:
-            # Input mode with bias settings
             bias = Bias.DISABLED
             if pull_up_down == cls.PUD_UP:
                 bias = Bias.PULL_UP
@@ -125,12 +126,7 @@ class GPIO:
     
     @classmethod
     def output(cls, pin, value):
-        """Set output pin value
-        
-        Args:
-            pin: Pin name or GPIO number
-            value: GPIO.HIGH or GPIO.LOW
-        """
+        """Set output pin value"""
         if pin not in cls._line_requests:
             raise RuntimeError(f"Pin {pin} not setup. Call GPIO.setup() first.")
         
@@ -140,14 +136,7 @@ class GPIO:
     
     @classmethod
     def input(cls, pin):
-        """Read input pin value
-        
-        Args:
-            pin: Pin name or GPIO number
-            
-        Returns:
-            GPIO.HIGH or GPIO.LOW
-        """
+        """Read input pin value"""
         if pin not in cls._line_requests:
             raise RuntimeError(f"Pin {pin} not setup. Call GPIO.setup() first.")
         
@@ -157,13 +146,8 @@ class GPIO:
     
     @classmethod
     def cleanup(cls, pin=None):
-        """Cleanup GPIO resources
-        
-        Args:
-            pin: Specific pin to cleanup, or None for all pins
-        """
+        """Cleanup GPIO resources"""
         if pin is None:
-            # Cleanup all pins
             for request in cls._line_requests.values():
                 try:
                     request.release()
@@ -172,7 +156,6 @@ class GPIO:
             cls._line_requests.clear()
             cls._pin_info.clear()
         else:
-            # Cleanup specific pin
             if pin in cls._line_requests:
                 try:
                     cls._line_requests[pin].release()
@@ -186,22 +169,12 @@ class GPIO:
 class PWM:
     """PWM wrapper compatible with Adafruit_BBIO.PWM using software PWM"""
     
-    # Internal state
     _pwm_threads = {}
     _pwm_states = {}
     
     @classmethod
     def start(cls, pin, duty_cycle=0, frequency=2000, polarity=0):
-        """Start PWM on a pin
-        
-        Args:
-            pin: Pin name (e.g., "P9_21")
-            duty_cycle: Duty cycle percentage (0-100)
-            frequency: PWM frequency in Hz
-            polarity: 0 for normal, 1 for inverted
-        """
-        gpio_num = GPIO._pin_to_gpio(pin)
-        
+        """Start PWM on a pin"""
         # Setup pin as output if not already done
         if pin not in GPIO._line_requests:
             GPIO.setup(pin, GPIO.OUT)
@@ -231,27 +204,22 @@ class PWM:
         while state['running']:
             try:
                 if state['duty_cycle'] <= 0:
-                    # Always LOW
                     val = 0 if state['polarity'] == 0 else 1
                     GPIO.output(pin, val)
-                    time.sleep(0.01)  # Small sleep to reduce CPU usage
+                    time.sleep(0.01)
                 elif state['duty_cycle'] >= 100:
-                    # Always HIGH
                     val = 1 if state['polarity'] == 0 else 0
                     GPIO.output(pin, val)
                     time.sleep(0.01)
                 else:
-                    # PWM cycle
                     period = 1.0 / state['frequency']
                     high_time = (state['duty_cycle'] / 100.0) * period
                     low_time = period - high_time
                     
-                    # High phase
                     val = 1 if state['polarity'] == 0 else 0
                     GPIO.output(pin, val)
                     time.sleep(high_time)
                     
-                    # Low phase
                     val = 0 if state['polarity'] == 0 else 1
                     GPIO.output(pin, val)
                     time.sleep(low_time)
@@ -260,11 +228,7 @@ class PWM:
     
     @classmethod
     def stop(cls, pin):
-        """Stop PWM on a pin
-        
-        Args:
-            pin: Pin name
-        """
+        """Stop PWM on a pin"""
         if pin in cls._pwm_states:
             cls._pwm_states[pin]['running'] = False
             
@@ -275,7 +239,6 @@ class PWM:
         if pin in cls._pwm_states:
             del cls._pwm_states[pin]
         
-        # Set pin LOW
         try:
             GPIO.output(pin, GPIO.LOW)
         except:
@@ -283,24 +246,14 @@ class PWM:
     
     @classmethod
     def set_duty_cycle(cls, pin, duty_cycle):
-        """Set PWM duty cycle
-        
-        Args:
-            pin: Pin name
-            duty_cycle: Duty cycle percentage (0-100)
-        """
+        """Set PWM duty cycle (0-100)"""
         if pin not in cls._pwm_states:
             raise RuntimeError(f"PWM not started on pin {pin}. Call PWM.start() first.")
         cls._pwm_states[pin]['duty_cycle'] = max(0, min(100, duty_cycle))
     
     @classmethod
     def set_frequency(cls, pin, frequency):
-        """Set PWM frequency
-        
-        Args:
-            pin: Pin name
-            frequency: Frequency in Hz
-        """
+        """Set PWM frequency in Hz"""
         if pin not in cls._pwm_states:
             raise RuntimeError(f"PWM not started on pin {pin}. Call PWM.start() first.")
         cls._pwm_states[pin]['frequency'] = frequency
@@ -315,36 +268,37 @@ class PWM:
 
 # Test code
 if __name__ == "__main__":
-    print("=== Testing Adafruit_BBIO wrapper with libgpiod v2.x ===")
+    print("=== Testing Adafruit_BBIO wrapper ===")
     print("BeagleBone Green Wireless\n")
     
     try:
-        # Test GPIO
-        print("Test 1: GPIO Output")
-        GPIO.setup("P9_27", GPIO.OUT)
-        GPIO.output("P9_27", GPIO.HIGH)
-        print("  P9_27 set to HIGH")
-        time.sleep(1)
-        GPIO.output("P9_27", GPIO.LOW)
-        print("  P9_27 set to LOW")
+        # Test P9_11 (gpiochip3, line 30)
+        print("Testing P9_11:")
+        chip_path, line = GPIO._pin_to_gpio("P9_11")
+        print(f"  Mapped to: {chip_path}, line {line}")
         
-        # Test PWM
-        print("\nTest 2: PWM Output")
-        PWM.start("P9_21", 50, 1000)
-        print("  PWM started on P9_21 at 50% duty cycle, 1000 Hz")
-        time.sleep(2)
+        GPIO.setup("P9_11", GPIO.OUT)
+        print("  Setup complete")
         
-        PWM.set_duty_cycle("P9_21", 75)
-        print("  PWM duty cycle changed to 75%")
-        time.sleep(2)
+        for i in range(10):
+            GPIO.output("P9_11", GPIO.HIGH)
+            print(f"  [{i+1}/10] HIGH")
+            time.sleep(2.0)
+            
+            GPIO.output("P9_11", GPIO.LOW)
+            print(f"  [{i+1}/10] LOW")
+            time.sleep(2.0)
         
-        PWM.stop("P9_21")
-        print("  PWM stopped on P9_21")
-        
-        print("\nTest complete!")
+        for i in range(5):
+            duty = i * 20
+            print(f"  Setting PWM duty cycle to {duty}%")
+            PWM.start("P9_21", duty_cycle=duty, frequency=1000)
+            time.sleep(2.0)
+            PWM.stop("P9_21")
+        print("\n✓ Test complete!")
         
     except KeyboardInterrupt:
-        print("\n\nTest interrupted")
+        print("\n\nInterrupted")
     except Exception as e:
         print(f"\n\nError: {e}")
         import traceback
