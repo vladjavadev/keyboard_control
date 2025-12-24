@@ -1,5 +1,5 @@
-import Adafruit_BBIO.PWM as PWM
-import Adafruit_BBIO.GPIO as GPIO
+from robot.bbio import PWM
+from robot.bbio import GPIO
 import math
 from enum import Enum
 
