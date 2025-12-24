@@ -126,7 +126,7 @@ class KeyboardControl:
             print("\n\nInterrupted by user (Ctrl+C)")
             
         except Exception as e:
-            print(f"\n\nError: {e}")
+            print("\n\nError: ", e)
             
         finally:
             print("\nStopping motors and cleaning up...")
